@@ -418,12 +418,12 @@ var EMP_COLORS=["#6c8cff","#34d399","#fb923c","#f87171","#a78bfa","#f472b6","#38
 function empColor(idx){return EMP_COLORS[idx%EMP_COLORS.length]}
 // 직원관리는 설정 화면에서만 접근
 var HIDDEN_TABS=[0];
-var S={tab:1,emps:[],recs:[],logs:{},deds:{},tax33:{},tax33Emp:{},showForm:false,editId:null,selDay:null,expSum:null,expRec:null,workPrev:null,
+var S={tab:1,emps:[],recs:[],logs:{},deds:{},tax33:{},tax33Emp:{},allowanceExclusions:{},showForm:false,editId:null,selDay:null,expSum:null,expRec:null,workPrev:null,
   month:(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")})(),
   filter:"active"};
 var fGender="male";
 
-function load(){try{var d=JSON.parse(localStorage.getItem(SK));if(d){S.emps=d.emps||[];S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};migrate()}}catch(e){}}
+function load(){try{var d=JSON.parse(localStorage.getItem(SK));if(d){S.emps=d.emps||[];S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};S.allowanceExclusions=d.allowanceExclusions||{};migrate()}}catch(e){}}
 function migrate(){
   S.emps.forEach(function(e){
     if(!e.wageHistory||!e.wageHistory.length){
@@ -437,7 +437,7 @@ function migrate(){
     }
   });
 }
-function sv(){localStorage.setItem(SK,JSON.stringify({emps:S.emps,recs:S.recs,logs:S.logs,deds:S.deds,tax33:S.tax33,tax33Emp:S.tax33Emp}))}
+function sv(){localStorage.setItem(SK,JSON.stringify({emps:S.emps,recs:S.recs,logs:S.logs,deds:S.deds,tax33:S.tax33,tax33Emp:S.tax33Emp,allowanceExclusions:S.allowanceExclusions}))}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function fm(n){return Math.round(n).toLocaleString("ko-KR")}
 function monthHours(pay){return pay.details.reduce(function(s,d){return s+d.total},0)}
@@ -483,6 +483,19 @@ function dayEmpColors(mo,d){
   return colors;
 }
 
+
+function allowanceExcluded(eid,mo,type){return !!((S.allowanceExclusions[eid+"_"+mo]||{})[type])}
+function setAllowanceExcluded(eid,type,checked){
+  var k=eid+"_"+S.month;
+  if(!S.allowanceExclusions[k])S.allowanceExclusions[k]={};
+  S.allowanceExclusions[k][type]=checked;sv();render();
+}
+function allowanceCheckboxes(eid){
+  return [["weekly","주휴 제외"],["ot","연장 제외"]].map(function(item){
+    return '<label style="display:inline-flex;align-items:center;gap:5px;margin:8px 12px 0 0;font-size:12px;color:var(--dim);cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--accent)"'+(allowanceExcluded(eid,S.month,item[0])?' checked':'')+' onchange="setAllowanceExcluded(\''+eid+'\',\''+item[0]+'\',this.checked)">'+item[1]+'</label>';
+  }).join("");
+}
+
 function calcMonthPay(e,mo){
   // 퇴사자: 퇴사일이 속한 달까지는 정상 계산, 그 이후 달만 0 처리
   var lastDay=null;
@@ -511,6 +524,8 @@ function calcMonthPay(e,mo){
   // 주휴수당 (법정): 주 15시간 이상 → (주 근로시간 ÷ 40) × 8시간 × 시급, 최대 8시간분
   for(var w2 in weeks){var ww=weeks[w2];var el=ww.hours>=15&&ww.days>=1;var wp=el?Math.min(ww.hours,40)/40*8*ww.lastWage:0;weeklyP+=wp;
     wkInfo.push({week:+w2,hours:Math.round(ww.hours*10)/10,days:ww.days,pay:wp,ok:el});}
+  if(allowanceExcluded(e.id,mo,"weekly"))weeklyP=0;
+  if(allowanceExcluded(e.id,mo,"ot"))otP=0;
   return{base:base,weekly:weeklyP,night:nightP,ot:otP,hol:holP,total:base+nightP+otP+holP+weeklyP,weeks:wkInfo,details:details,wage:wageForMonth(e,mo)};
 }
 function activeE(){return S.emps.filter(function(e){return e.status==="active"})}
@@ -1194,7 +1209,7 @@ function rCalc(){
     if(result.tax>0)bds+='<span class="bg bgp">3.3% 공제</span>';
     if(ded.amount>0)bds+='<span class="bg bgr">삭감</span>';
     h+='<div class="sum-card" onclick="tgS(\''+e.id+'\')">';
-    h+='<div class="ch"><div><span class="en">'+gi+' '+esc(e.name)+'</span>'+bds+'<label style="display:flex;align-items:center;gap:5px;margin:8px 0 0;font-size:12px;color:var(--purple);cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--purple)"'+(tax33For(e.id,S.month)?' checked':'')+' onchange="setEmpTax33(\''+e.id+'\',this.checked)">3.3% 공제</label></div>';
+    h+='<div class="ch"><div><span class="en">'+gi+' '+esc(e.name)+'</span>'+bds+'<label style="display:flex;align-items:center;gap:5px;margin:8px 0 0;font-size:12px;color:var(--purple);cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" style="width:17px;height:17px;accent-color:var(--purple)"'+(tax33For(e.id,S.month)?' checked':'')+' onchange="setEmpTax33(\''+e.id+'\',this.checked)">3.3% 공제</label>'+allowanceCheckboxes(e.id)+'</div>';
     h+='<div style="text-align:right">';
     if(result.tax>0){
       h+='<div style="font-size:11px;color:var(--dim)">공제 전 '+fm(pay.total)+'원</div>';
@@ -1206,7 +1221,7 @@ function rCalc(){
     h+='<div style="font-size:11px;color:var(--dim)">'+(open?"접기 ▲":"상세 ▼")+'</div></div></div>';
     if(open){
       h+='<div class="det" onclick="event.stopPropagation()">';
-      pay.weeks.forEach(function(w){h+='<div class="ws'+(w.ok?" ok":"")+'">'+w.week+'주차: <b>'+w.hours+'h / '+w.days+'일</b>'+(w.ok?' ✓ 주휴 '+fm(w.pay)+'원':' (미충족)')+'</div>';});
+      pay.weeks.forEach(function(w){h+='<div class="ws'+(w.ok?" ok":"")+'">'+w.week+'주차: <b>'+w.hours+'h / '+w.days+'일</b>'+(allowanceExcluded(e.id,S.month,"weekly")?' (주휴 제외)':(w.ok?' ✓ 주휴 '+fm(w.pay)+'원':' (미충족)'))+'</div>';});
       h+='<div class="pr"><span class="pl">월 총 근무시간</span><span class="pv">'+monthHours(pay).toFixed(1)+'시간</span></div>';
       var items=[["기본급",pay.base,1],["주휴수당",pay.weekly,pay.weekly>0],["야간수당",pay.night,pay.night>0],["연장수당",pay.ot,pay.ot>0],["휴일수당",pay.hol,pay.hol>0]];
       items.forEach(function(it){if(it[2])h+='<div class="pr"><span class="pl">'+it[0]+'</span><span class="pv">'+fm(it[1])+'원</span></div>';});
@@ -1585,7 +1600,7 @@ function bk(){
   if(pw.length<4){alert("비밀번호는 4자 이상이어야 합니다.");return}
   var pw2=prompt("비밀번호를 한 번 더 입력하세요");
   if(pw!==pw2){alert("비밀번호가 일치하지 않습니다.");return}
-  var data={emps:S.emps,recs:S.recs,logs:S.logs,deds:S.deds,tax33:S.tax33,tax33Emp:S.tax33Emp,at:new Date().toISOString()};
+  var data={emps:S.emps,recs:S.recs,logs:S.logs,deds:S.deds,tax33:S.tax33,tax33Emp:S.tax33Emp,allowanceExclusions:S.allowanceExclusions,at:new Date().toISOString()};
   encryptData(JSON.stringify(data),pw).then(function(buf){
     var blob=new Blob([buf],{type:"application/octet-stream"});
     var u=URL.createObjectURL(blob);
@@ -1598,7 +1613,7 @@ function bk(){
   }).catch(function(e){alert("백업 실패: "+e.message)});
 }
 function restoreClick(){document.getElementById("rfi").click()}
-document.getElementById("rfi").addEventListener("change",function(e){var f=e.target.files[0];if(!f)return;var self=this;var pw=prompt("백업 파일의 비밀번호를 입력하세요");if(!pw){self.value="";return}var r=new FileReader();r.onload=function(ev){try{var raw=ev.target.result;if(typeof raw==="string"){try{var d=JSON.parse(raw);if(d.emps){if(!confirm("암호화되지 않은 구 버전 백업입니다. 복원하시겠습니까?\n\n현재 데이터가 덮어씌워집니다.")){self.value="";return}S.emps=d.emps;S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};migrate();sv();render();alert("복원 완료되었습니다.");self.value="";return;}}catch(je){}}var buf=new Uint8Array(raw);decryptData(buf,pw).then(function(txt){var d=JSON.parse(txt);if(!d.emps)throw new Error("올바른 데이터가 아닙니다.");if(!confirm("복원하시겠습니까?\n현재 데이터가 덮어씌워집니다.")){self.value="";return}S.emps=d.emps;S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};migrate();sv();render();alert("복원 완료되었습니다.");self.value="";}).catch(function(err){alert("복원 실패\n\n비밀번호가 틀렸거나 파일이 손상되었습니다.");self.value="";});}catch(err){alert("파일을 읽을 수 없습니다.");self.value="";}};r.onerror=function(){alert("파일 읽기 오류");self.value="";};if(f.name.endsWith(".json")){r.readAsText(f);}else{r.readAsArrayBuffer(f);}});
+document.getElementById("rfi").addEventListener("change",function(e){var f=e.target.files[0];if(!f)return;var self=this;var pw=prompt("백업 파일의 비밀번호를 입력하세요");if(!pw){self.value="";return}var r=new FileReader();r.onload=function(ev){try{var raw=ev.target.result;if(typeof raw==="string"){try{var d=JSON.parse(raw);if(d.emps){if(!confirm("암호화되지 않은 구 버전 백업입니다. 복원하시겠습니까?\n\n현재 데이터가 덮어씌워집니다.")){self.value="";return}S.emps=d.emps;S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};S.allowanceExclusions=d.allowanceExclusions||{};migrate();sv();render();alert("복원 완료되었습니다.");self.value="";return;}}catch(je){}}var buf=new Uint8Array(raw);decryptData(buf,pw).then(function(txt){var d=JSON.parse(txt);if(!d.emps)throw new Error("올바른 데이터가 아닙니다.");if(!confirm("복원하시겠습니까?\n현재 데이터가 덮어씌워집니다.")){self.value="";return}S.emps=d.emps;S.recs=d.recs||[];S.logs=d.logs||{};S.deds=d.deds||{};S.tax33=d.tax33||{};S.tax33Emp=d.tax33Emp||{};S.allowanceExclusions=d.allowanceExclusions||{};migrate();sv();render();alert("복원 완료되었습니다.");self.value="";}).catch(function(err){alert("복원 실패\n\n비밀번호가 틀렸거나 파일이 손상되었습니다.");self.value="";});}catch(err){alert("파일을 읽을 수 없습니다.");self.value="";}};r.onerror=function(){alert("파일 읽기 오류");self.value="";};if(f.name.endsWith(".json")){r.readAsText(f);}else{r.readAsArrayBuffer(f);}});
 // 사진 선택 → 제미나이 분석
 document.getElementById("pfi").addEventListener("change",function(e){
   var f=e.target.files[0];this.value="";
@@ -1620,7 +1635,7 @@ document.getElementById("pfi").addEventListener("change",function(e){
   r.onerror=function(){alert("사진 읽기 오류가 발생했습니다.")};
   r.readAsDataURL(f);
 });
-function rst(){if(!confirm("모든 데이터를 삭제하시겠습니까?"))return;if(!confirm("마지막 확인입니다."))return;S.emps=[];S.recs=[];S.logs={};S.deds={};S.tax33={};S.tax33Emp={};sv();render()}
+function rst(){if(!confirm("모든 데이터를 삭제하시겠습니까?"))return;if(!confirm("마지막 확인입니다."))return;S.emps=[];S.recs=[];S.logs={};S.deds={};S.tax33={};S.tax33Emp={};S.allowanceExclusions={};sv();render()}
 function openManual(){document.getElementById("manualOv").classList.add("show");document.body.style.overflow="hidden";window.scrollTo(0,0)}
 function closeManual(){document.getElementById("manualOv").classList.remove("show");document.body.style.overflow=""}
 function jumpTo(id){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:"smooth",block:"start"})}
